@@ -9,10 +9,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-char ok_msg[] = "HTTP/1.1 200 OK\r\n\r\n\0";
+char _msgOk[] = "HTTP/1.1 200 OK\r\n\r\n\0";
 pthread_t thr;
-int player_count = 0;
-int restart_count = 0;
+int _player_counter = 0;
+int _restart_counter = 0;
 char grid[] = "_________";
 
 int find_space(char *request)
@@ -27,24 +27,24 @@ void grid_command(long client, char *playerName)
 {
     char *content = NULL;
     size_t lg;
-    if (player_count == 2)
+    if (_player_counter == 2)
     {
         if (g_file_get_contents("www/busy.html", &content, &lg, NULL))
         {
-            send(client, ok_msg, strlen(ok_msg), MSG_MORE);
+            send(client, _msgOk, strlen(_msgOk), MSG_MORE);
             write(client, content, lg);
         }
     }
     else
     {
-        char symbol = (player_count == 0) ? 'x' : 'o';
-        player_count++;
+        char symbol = (_player_counter == 0) ? 'x' : 'o';
+        _player_counter++;
         if (g_file_get_contents("www/grid.html", &content, &lg, NULL))
         {
             char *to_send = g_strdup_printf(content, symbol, playerName);
             if (to_send == NULL)
                 errx(EXIT_FAILURE, "Fail to g strdup printf");
-            send(client, ok_msg, strlen(ok_msg), MSG_MORE);
+            send(client, _msgOk, strlen(_msgOk), MSG_MORE);
             write(client, to_send, strlen(to_send));
             g_free(to_send);
         }
@@ -54,17 +54,21 @@ void grid_command(long client, char *playerName)
 
 void restart_command(long client)
 {
-    if (restart_count == 0)
+    if (_restart_counter == 0)
     {
-        player_count--;
-        for (int i = 0; i < 9; ++i)
+        _player_counter--;
+        int i = 0;
+        while(i < 9)
+        {
             grid[i] = '_';
-        restart_count++;
+            i++;
+        }   
+        _restart_counter++;
     }
     else
     {
-        player_count++;
-        restart_count--;
+        _player_counter++;
+        _restart_counter--;
     }
     send(client, grid, 9, 0);
 }
@@ -74,13 +78,13 @@ void default_command(long client)
     char *content = NULL;
     size_t lg;
     gboolean res;
-    if (player_count < 2)
+    if (_player_counter < 2)
         res = g_file_get_contents("www/new_player.html", &content, &lg, NULL);
     else
         res = g_file_get_contents("www/busy.html", &content, &lg, NULL);
     if (res)
     {
-        send(client, ok_msg, strlen(ok_msg), MSG_MORE);
+        send(client, _msgOk, strlen(_msgOk), MSG_MORE);
         write(client, content, lg);
         g_free(content);
     }
@@ -115,7 +119,7 @@ void send_response(GString *resource, long client)
     size_t lg;
     if (g_file_get_contents(path->str, &content, &lg, NULL))
     {
-        send(client, ok_msg, strlen(ok_msg), MSG_MORE);
+        send(client, _msgOk, strlen(_msgOk), MSG_MORE);
         write(client, content, lg);
         g_free(content);
     }
@@ -126,7 +130,6 @@ void send_response(GString *resource, long client)
 
 GString *get_resource(GString *request)
 {
-    // + 5 to skip the 'GET /' from the beginning of the request
     int len = find_space(request->str + 5);
     GString *res = g_string_new_len(request->str + 5, len);
     if (res == NULL)
@@ -142,7 +145,7 @@ void print_request(char *buffer, ssize_t len, long client)
 
     ssize_t i = 0;
     GString *resource;
-    while (i < len)
+    for(ssize_t i = 0; i < len; i++)
     {
         g_string_append_c(str, buffer[i]);
         if (g_str_has_suffix(str->str, "\r\n\r\n"))
@@ -155,7 +158,6 @@ void print_request(char *buffer, ssize_t len, long client)
             if (str == NULL)
                 errx(EXIT_FAILURE, "Fail to build GString");
         }
-        ++i;
     }
     if (str != NULL)
         g_string_free(str, 1);
@@ -194,7 +196,8 @@ int binder(char *ip, char *port)
     struct addrinfo *rp;
     int cnx;
     int val = 1;
-    for (rp = result; rp != NULL; rp = rp->ai_next)
+    rp = result;
+    while(rp != NULL)
     {
         cnx = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         setsockopt(cnx, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(int));
@@ -203,6 +206,7 @@ int binder(char *ip, char *port)
         if (bind(cnx, rp->ai_addr, rp->ai_addrlen) == 0)
             break; // SUCCESS
         close(cnx);
+        rp = rp->ai_next
     }
     if (rp == NULL)
         errx(EXIT_FAILURE,
@@ -221,7 +225,7 @@ int main(void)
     for (;;)
     {
         long client = accept(cnx, NULL, NULL);
-        pthread_detach(
-            pthread_create(&thr, NULL, client_pthread, (void *)client));
+        pthread_create(&thr, NULL, client_pthread, (void *)client);
+        pthread_detach(thr);
     }
 }

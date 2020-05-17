@@ -1,4 +1,5 @@
 #include <err.h>
+#include <errno.h>
 #include <gmodule.h>
 #include <netdb.h>
 #include <stdio.h>
@@ -6,9 +7,16 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <errno.h>
 
-char response[] = "HTTP/1.1 200 OK\r\n\r\nHello World!\0";
+char _response[] = "HTTP/1.1 200 OK\r\n\r\nHello World!\0";
+
+int find_space(char *request)
+{
+    int i = 0;
+    while (request[i] && request[i] != ' ')
+        ++i;
+    return i;
+}
 
 void print_request(char *buffer, ssize_t len, int client)
 {
@@ -21,8 +29,9 @@ void print_request(char *buffer, ssize_t len, int client)
         g_string_append_c(str, buffer[i]);
         if (g_str_has_suffix(str->str, "\r\n\r\n"))
         {
-            printf("%s", str->str);
-            send(client, response, strlen(response), 0);
+            int len = find_space(str->str + 5);
+            printf("Resource = %.*s\n", len, str->str + 5);
+            send(client, _response, strlen(_response), 0);
             g_string_free(str, 1);
             str = g_string_new(NULL);
             if (str == NULL)
@@ -48,8 +57,8 @@ int binder(char *ip, char *port)
 
     if (addrinfo_error != 0)
     {
-        errx(EXIT_FAILURE, "Fail getting address for %s on port %s: %s",
-             ip, port, gai_strerror(addrinfo_error));
+        errx(EXIT_FAILURE, "Fail getting address for %s on port %s: %s", ip,
+             port, gai_strerror(addrinfo_error));
     }
 
     struct addrinfo *rp;
@@ -62,7 +71,7 @@ int binder(char *ip, char *port)
         if (cnx == -1)
             continue;
         if (bind(cnx, rp->ai_addr, rp->ai_addrlen) == 0)
-            break; // SUCCESS
+            break;
         close(cnx);
     }
     if (rp == NULL)

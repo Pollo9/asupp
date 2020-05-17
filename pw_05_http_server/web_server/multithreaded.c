@@ -7,9 +7,11 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <pthread.h>
 
-char notfound[] = "HTTP/1.1 404 NOT FOUND\r\n\r\nError 404: Page Not Found\0";
-char ok_msg[] = "HTTP/1.1 200 OK\r\n\r\n\0";
+char _notFound[] = "HTTP/1.1 404 Not Found\r\n\r\nError 404: Page Not Found\0";
+char _msgOk[] = "HTTP/1.1 200 OK\r\n\r\n\0";
+pthread_t thr;
 
 int find_space(char *request)
 {
@@ -37,11 +39,11 @@ void send_response(GString *resource, int client)
     size_t lg;
     if (g_file_get_contents(resource->str, &content, &lg, NULL) == FALSE)
     {
-        send(client, notfound, strlen(notfound), 0);
+        send(client, _notFound, strlen(_notFound), 0);
     }
     else
     {
-        send(client, ok_msg, strlen(ok_msg), MSG_MORE);
+        send(client, _msgOk, strlen(_msgOk), MSG_MORE);
         write(client, content, lg);
     }
 }
@@ -67,7 +69,6 @@ void print_request(char *buffer, ssize_t len, int client)
         g_string_append_c(str, buffer[i]);
         if (g_str_has_suffix(str->str, "\r\n\r\n"))
         {
-            // + 5 to skip the 'GET /' from the beginning of the request
             resource = get_resource(str);
             send_response(resource, client);
             g_string_free(str, 1);
@@ -80,6 +81,20 @@ void print_request(char *buffer, ssize_t len, int client)
     }
     if (str != NULL)
         g_string_free(str, 1);
+}
+
+void *client_pthread(void *arg)
+{
+    long client = (long) arg;
+    char buff[4096];
+    ssize_t lg = recv(client, buff, 4096, 0);
+    if (lg > 0)
+    {
+        print_request(buff, lg, client);
+    }
+
+    close(client);
+    return NULL;
 }
 
 int binder(char *ip, char *port)
@@ -110,7 +125,7 @@ int binder(char *ip, char *port)
         if (cnx == -1)
             continue;
         if (bind(cnx, rp->ai_addr, rp->ai_addrlen) == 0)
-            break; // SUCCESS
+            break;
         close(cnx);
     }
     if (rp == NULL)
@@ -127,15 +142,8 @@ int main(void)
     printf("%s\n", "Static Server\nListening to port 2048...");
     for (;;)
     {
-        int client = accept(cnx, NULL, NULL);
-        char buff[4096];
-        ssize_t lg = recv(client, buff, 4096, 0);
-        if (lg == 0)
-        {
-            close(client);
-            continue;
-        }
-        print_request(buff, lg, client);
-        close(client);
+        long client = accept(cnx, NULL, NULL);
+        pthread_create(&thr, NULL, client_pthread, (void *)client);
+        pthread_detach(thr);
     }
 }
