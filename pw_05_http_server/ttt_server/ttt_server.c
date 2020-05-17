@@ -143,7 +143,6 @@ void print_request(char *buffer, ssize_t len, long client)
     if (str == NULL)
         errx(EXIT_FAILURE, "Fail to build GString");
 
-    ssize_t i = 0;
     GString *resource;
     for(ssize_t i = 0; i < len; i++)
     {
@@ -206,7 +205,7 @@ int binder(char *ip, char *port)
         if (bind(cnx, rp->ai_addr, rp->ai_addrlen) == 0)
             break; // SUCCESS
         close(cnx);
-        rp = rp->ai_next
+        rp = rp->ai_next;
     }
     if (rp == NULL)
         errx(EXIT_FAILURE,
